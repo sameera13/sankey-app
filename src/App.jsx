@@ -12,7 +12,7 @@ const EVENT_ORDER = [
   "GetDueDates",
   "SetDueDates",
   "CreditCheck",
-  "SubmitOrder", // terminal
+  "SubmitOrder", 
 ];
 
 const COLUMN_X = {
@@ -104,20 +104,22 @@ function sortAndCleanSessions(sessions) {
 function buildSankeyData(sessions) {
   const labels = [],
     xs = [],
-    ys = [],
     nodeColors = [];
+
+  // helper to create / reuse a node index
   const idxOf = (lbl, x) => {
     const i = labels.indexOf(lbl);
     if (i !== -1) return i;
     labels.push(lbl);
     xs.push(x);
-    ys.push(0);
     nodeColors.push(NODE_PALETTE[lbl] || NODE_PALETTE.DEFAULT);
     return labels.length - 1;
   };
+
   const linkCounts = new Map();
   const outTotals = new Map();
 
+  // ‑‑‑ accumulate link frequencies & totals
   sessions.forEach(({ client, events }) => {
     const path = [client, ...events];
     for (let i = 0; i < path.length - 1; i++) {
@@ -137,55 +139,20 @@ function buildSankeyData(sessions) {
     }
   });
 
+  // ensure every source/target has a node index & x‑column
   [...linkCounts.keys()].forEach((k) => {
     const [s, t] = k.split("||");
     idxOf(s, COLUMN_X[s] ?? COLUMN_X.CLIENT);
-    const tx = t.startsWith("Dropped")
-      ? COLUMN_X.DROP
-      : COLUMN_X[t] ?? COLUMN_X.DROP;
+    const tx = t.startsWith("Dropped") ? COLUMN_X.DROP : COLUMN_X[t] ?? COLUMN_X.DROP;
     idxOf(t, tx);
   });
 
-  const buckets = {};
-  labels.forEach((_, i) => {
-    const x = xs[i];
-    if (!buckets[x]) buckets[x] = [];
-    buckets[x].push(i);
-  });
-
-  Object.entries(buckets).forEach(([x, indices]) => {
-    indices.sort((a, b) => {
-      const aLabel = labels[a];
-      const bLabel = labels[b];
-
-      if (aLabel.startsWith("Dropped") && !bLabel.startsWith("Dropped")) return 1;
-      if (!aLabel.startsWith("Dropped") && bLabel.startsWith("Dropped")) return -1;
-
-      const aOrder = EVENT_ORDER.indexOf(aLabel);
-      const bOrder = EVENT_ORDER.indexOf(bLabel);
-      if (aOrder !== -1 && bOrder !== -1) return aOrder - bOrder;
-      if (aOrder !== -1) return -1;
-      if (bOrder !== -1) return 1;
-
-      return aLabel.localeCompare(bLabel);
-    });
-
-    indices.forEach((nodeIdx, i) => {
-      if (indices.length === 1) {
-        ys[nodeIdx] = 0.5;
-      } else {
-        const padding = 0.1;
-        const usableSpace = 1 - 2 * padding;
-        ys[nodeIdx] = padding + (i * usableSpace) / (indices.length - 1);
-      }
-    });
-  });
-
+  // build Sankey arrays
   const sArr = [],
     tArr = [],
     vArr = [],
-    lArr = [],
-    cArr = [];
+    cArr = [],
+    hoverArr = [];
 
   linkCounts.forEach((cnt, k) => {
     const [s, t] = k.split("||");
@@ -194,43 +161,41 @@ function buildSankeyData(sessions) {
     const ti = labels.indexOf(t);
 
     let linkColor;
-    if (t.startsWith("Dropped")) {
-      linkColor = rgba("#ef4444", 0.7);
-    } else if (t === "SubmitOrder") {
-      linkColor = rgba("#059669", 0.8);
-    } else {
-      linkColor = rgba(nodeColors[si], 0.6);
-    }
+    if (t.startsWith("Dropped")) linkColor = rgba("#ef4444", 0.7);
+    else if (t === "SubmitOrder") linkColor = rgba("#059669", 0.8);
+    else linkColor = rgba(nodeColors[si], 0.6);
 
     sArr.push(si);
     tArr.push(ti);
     vArr.push(cnt);
-    lArr.push(`${s} → ${t}<br>${cnt} sessions (${pct}%)`);
     cArr.push(linkColor);
+    hoverArr.push(`${s} → ${t}<br>${cnt} sessions (${pct}%)`);
   });
 
   return {
     type: "sankey",
     orientation: "h",
+    arrangement: "snap", // preserves columns, Plotly chooses y without overlaps
     node: {
       label: labels,
-      x: xs,
-      y: ys,
-      pad: 25,
-      thickness: 35,
+      x: xs, // only horizontal placement is fixed
+      pad: 50,
+      thickness: 20,
       color: nodeColors,
       line: { color: "rgba(255,255,255,0.2)", width: 2 },
-      hovertemplate: "<b>%{label}</b><br>Total Sessions: %{value}<extra></extra>",
+      hovertemplate: "<b>%{label}</b><extra></extra>",
     },
     link: {
       source: sArr,
       target: tArr,
       value: vArr,
-      label: lArr,
+      customdata: hoverArr, // invisible payload used for hover
       color: cArr,
       line: { color: "rgba(255,255,255,0.1)", width: 0.5 },
-      hovertemplate: "%{label}<extra></extra>",
+      hovertemplate: "%{customdata}<extra></extra>",
     },
+    valueformat: ".0f",
+    valuesuffix: " sessions",
   };
 }
 
@@ -265,7 +230,6 @@ export default function App() {
     }
 
     let filteredRows = rows;
-
     if (clientFilter.trim()) {
       const f = clientFilter.toLowerCase();
       filteredRows = filteredRows.filter((r) => {
@@ -280,15 +244,12 @@ export default function App() {
 
     const sessions = parseSessions(filteredRows);
     sortAndCleanSessions(sessions);
-    const sankeyData = buildSankeyData(sessions);
-    setData(sankeyData);
+    setData(buildSankeyData(sessions));
   }, [rows, clientFilter]);
 
-  // Fix summary to count sessions directly
   const summary = useMemo(() => {
     if (!data || !rows.length) return null;
 
-    // Extract sessions again (for accuracy)
     let filteredRows = rows;
     if (clientFilter.trim()) {
       const f = clientFilter.toLowerCase();
@@ -323,23 +284,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 text-slate-100 relative overflow-hidden p-6">
       <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        {/* header */}
         <header className="mb-6">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-            Client Journey Analytics
+            Client Journey Visualization
           </h1>
           <p className="text-slate-400 mt-1">
-            Visualize customer flow and identify optimization opportunities
+            A Sankey Chart Analysis of User Flows
           </p>
         </header>
 
+        {/* upload + filter */}
         <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-wrap gap-4 items-center">
           <label className="relative cursor-pointer group">
-            <input
-              type="file"
-              accept=".xls,.xlsx"
-              onChange={handleUpload}
-              className="sr-only"
-            />
+            <input type="file" accept=".xls,.xlsx" onChange={handleUpload} className="sr-only" />
             <div className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg cursor-pointer">
               📁 Choose Excel File
             </div>
@@ -359,6 +317,7 @@ export default function App() {
           />
         </section>
 
+        {/* error */}
         {error && (
           <section className="bg-red-500/20 border border-red-500/30 rounded-xl p-4 backdrop-blur-sm">
             <div className="flex items-center gap-3">
@@ -368,6 +327,7 @@ export default function App() {
           </section>
         )}
 
+        {/* summary stats */}
         {summary && (
           <section className="bg-white/10 rounded-xl p-6 border border-white/20 shadow-md flex flex-wrap gap-6 justify-center">
             <div className="text-center">
@@ -391,63 +351,54 @@ export default function App() {
           </section>
         )}
 
+        {/* sankey chart */}
         <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl min-h-[600px]">
           {data ? (
-            <>
-              <Plot
-                data={[data]}
-                layout={{
-                  font: {
-                    size: 12,
-                    color: "#f8fafc",
-                    family: "Inter, system-ui, sans-serif",
-                  },
-                  paper_bgcolor: "rgba(0,0,0,0)",
-                  plot_bgcolor: "rgba(0,0,0,0)",
-                  margin: { l: 15, r: 15, t: 80, b: 20 },
-                  title: {
-                    text: "🔄 Client Journey Analytics Dashboard",
-                    font: {
-                      size: 24,
-                      color: "#f1f5f9",
-                      family: "Inter, system-ui, sans-serif",
-                    },
+            <Plot
+              data={[data]}
+              layout={{
+                font: {
+                  size: 12,
+                  color: "#f8fafc",
+                  family: "Inter, system-ui, sans-serif",
+                },
+                paper_bgcolor: "#1e293b",
+                plot_bgcolor: "rgba(0,0,0,0)",
+                margin: { l: 20, r: 20, t: 80, b: 40 },
+                height: 900,
+                title: {
+                  text: "🔄 Client Journey Analytics Dashboard",
+                  font: { size: 24, color: "#f1f5f9", family: "Inter, system-ui, sans-serif" },
+                  x: 0.5,
+                  xanchor: "center",
+                  y: 0.95,
+                },
+                annotations: [
+                  {
+                    text: "Flow visualization showing customer progression through service touchpoints",
                     x: 0.5,
+                    y: 0.02,
+                    xref: "paper",
+                    yref: "paper",
                     xanchor: "center",
-                    y: 0.95,
+                    yanchor: "bottom",
+                    showarrow: false,
+                    font: { size: 11, color: "#94a3b8" },
                   },
-                  annotations: [
-                    {
-                      text:
-                        "Flow visualization showing customer progression through service touchpoints",
-                      x: 0.5,
-                      y: 0.02,
-                      xref: "paper",
-                      yref: "paper",
-                      xanchor: "center",
-                      yanchor: "bottom",
-                      showarrow: false,
-                      font: { size: 11, color: "#94a3b8" },
-                    },
-                  ],
-                  hovermode: "closest",
-                  dragmode: "pan",
-                }}
-                config={{
-                  responsive: true,
-                  displayModeBar: true,
-                  displaylogo: false,
-                }}
-                style={{ width: "100%", height: "calc(100vh - 400px)" }}
-              />
-            </>
+                ],
+                hovermode: "closest",
+                dragmode: "pan",
+                autosize: true,
+                showlegend: false,
+              }}
+              config={{ responsive: true, displayModeBar: true, displaylogo: false }}
+              style={{ width: "100%", height: "800px" }}
+            />
           ) : (
             <div className="text-center py-12 text-slate-400">
               <div className="text-6xl mb-4">📊</div>
               <p className="text-lg mb-2">Ready to analyze your data</p>
-              <p className="text-sm">
-                Upload an Excel file to generate the interactive Sankey diagram
-              </p>
+              <p className="text-sm">Upload an Excel file to generate the interactive Sankey diagram</p>
             </div>
           )}
         </section>
