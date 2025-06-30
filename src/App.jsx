@@ -391,7 +391,7 @@ export default function App() {
                 autosize: true,
                 showlegend: false,
               }}
-              config={{ responsive: true, displayModeBar: true, displaylogo: false }}
+              config={{ responsive: true, displayModeBar: true, displaylogo: false,modeBarButtonsToRemove: ["select2d", "lasso2d"] }}
               style={{ width: "100%", height: "800px" }}
             />
           ) : (
