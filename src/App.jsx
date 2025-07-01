@@ -60,14 +60,11 @@ function parseSessions(rows) {
       acc[k.toLowerCase()] = k;
       return acc;
     }, {});
-
     const client = r[keysLower["strclientid"]]?.toString().trim() || "";
     const sid = r[keysLower["strsessionid"]]?.toString().trim() || "";
     let evtRaw = r[keysLower["methodname"]]?.toString().trim() || "";
     if (!client || !sid || !evtRaw) return;
-
     if (evtRaw.includes("SAVESMARTCART") && evtRaw.includes("SUCCESS")) return;
-
     // Normalize event names
     let evt = evtRaw.toLowerCase();
     if (evt === "submitorder") evt = "SubmitOrder";
@@ -79,7 +76,6 @@ function parseSessions(rows) {
       if (match) evt = match;
       else evt = evtRaw;
     }
-
     if (!sessions.has(sid)) {
       sessions.set(sid, { client, events: [] });
     }
@@ -104,22 +100,36 @@ function sortAndCleanSessions(sessions) {
 function buildSankeyData(sessions) {
   const labels = [],
     xs = [],
+    ys = [],
     nodeColors = [];
-
+  
+  // Get all unique clients first to calculate proper spacing
+  const allClients = [...new Set([...sessions.values()].map(s => s.client))].sort();
+  
   // helper to create / reuse a node index
   const idxOf = (lbl, x) => {
     const i = labels.indexOf(lbl);
     if (i !== -1) return i;
     labels.push(lbl);
     xs.push(x);
+    
+    // For client nodes, distribute them evenly in vertical space
+    if (allClients.includes(lbl)) {
+      const clientIndex = allClients.indexOf(lbl);
+      const spacing = 1.0 / Math.max(allClients.length + 1, 10);
+      ys.push(spacing * (clientIndex + 1));
+    } else {
+      ys.push(null); // Let Plotly auto-position non-client nodes
+    }
+    
     nodeColors.push(NODE_PALETTE[lbl] || NODE_PALETTE.DEFAULT);
     return labels.length - 1;
   };
-
+  
   const linkCounts = new Map();
   const outTotals = new Map();
-
-  // ‑‑‑ accumulate link frequencies & totals
+  
+  // accumulate link frequencies & totals
   sessions.forEach(({ client, events }) => {
     const path = [client, ...events];
     for (let i = 0; i < path.length - 1; i++) {
@@ -138,7 +148,7 @@ function buildSankeyData(sessions) {
       outTotals.set(last, (outTotals.get(last) || 0) + 1);
     }
   });
-
+  
   // ensure every source/target has a node index & x‑column
   [...linkCounts.keys()].forEach((k) => {
     const [s, t] = k.split("||");
@@ -146,40 +156,39 @@ function buildSankeyData(sessions) {
     const tx = t.startsWith("Dropped") ? COLUMN_X.DROP : COLUMN_X[t] ?? COLUMN_X.DROP;
     idxOf(t, tx);
   });
-
+  
   // build Sankey arrays
   const sArr = [],
     tArr = [],
     vArr = [],
     cArr = [],
     hoverArr = [];
-
+  
   linkCounts.forEach((cnt, k) => {
     const [s, t] = k.split("||");
     const pct = ((cnt / outTotals.get(s)) * 100).toFixed(1);
     const si = labels.indexOf(s);
     const ti = labels.indexOf(t);
-
     let linkColor;
     if (t.startsWith("Dropped")) linkColor = rgba("#ef4444", 0.7);
     else if (t === "SubmitOrder") linkColor = rgba("#059669", 0.8);
     else linkColor = rgba(nodeColors[si], 0.6);
-
     sArr.push(si);
     tArr.push(ti);
     vArr.push(cnt);
     cArr.push(linkColor);
     hoverArr.push(`${s} → ${t}<br>${cnt} sessions (${pct}%)`);
   });
-
+  
   return {
     type: "sankey",
     orientation: "h",
-    arrangement: "snap", // preserves columns, Plotly chooses y without overlaps
+    arrangement: "snap",
     node: {
       label: labels,
-      x: xs, // only horizontal placement is fixed
-      pad: 50,
+      x: xs,
+      y: ys, // vertical positioning for clients
+      pad: 15,
       thickness: 20,
       color: nodeColors,
       line: { color: "rgba(255,255,255,0.2)", width: 2 },
@@ -189,7 +198,7 @@ function buildSankeyData(sessions) {
       source: sArr,
       target: tArr,
       value: vArr,
-      customdata: hoverArr, // invisible payload used for hover
+      customdata: hoverArr,
       color: cArr,
       line: { color: "rgba(255,255,255,0.1)", width: 0.5 },
       hovertemplate: "%{customdata}<extra></extra>",
@@ -204,7 +213,7 @@ export default function App() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [clientFilter, setClientFilter] = useState("");
-
+  
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -222,13 +231,12 @@ export default function App() {
     };
     reader.readAsArrayBuffer(file);
   };
-
+  
   useEffect(() => {
     if (!rows.length) {
       setData(null);
       return;
     }
-
     let filteredRows = rows;
     if (clientFilter.trim()) {
       const f = clientFilter.toLowerCase();
@@ -241,15 +249,13 @@ export default function App() {
         return client.toLowerCase().includes(f);
       });
     }
-
     const sessions = parseSessions(filteredRows);
     sortAndCleanSessions(sessions);
     setData(buildSankeyData(sessions));
   }, [rows, clientFilter]);
-
+  
   const summary = useMemo(() => {
     if (!data || !rows.length) return null;
-
     let filteredRows = rows;
     if (clientFilter.trim()) {
       const f = clientFilter.toLowerCase();
@@ -264,14 +270,12 @@ export default function App() {
     }
     const sessions = parseSessions(filteredRows);
     sortAndCleanSessions(sessions);
-
     const totalSessions = sessions.size;
     let completedCount = 0;
     sessions.forEach(({ events }) => {
       if (events.includes("SubmitOrder")) completedCount++;
     });
     const droppedCount = totalSessions - completedCount;
-
     return {
       totalSessions,
       completed: completedCount,
@@ -280,7 +284,16 @@ export default function App() {
       pctDropped: totalSessions ? ((droppedCount / totalSessions) * 100).toFixed(1) : 0,
     };
   }, [data, rows, clientFilter]);
-
+  
+  // Calculate dynamic height based on number of unique clients
+  const chartHeight = useMemo(() => {
+    if (!data) return 800;
+    const clientCount = data.node.label.filter(label => 
+      !EVENT_ORDER.includes(label) && !label.startsWith('Dropped')
+    ).length;
+    return Math.max(800, Math.min(1200, clientCount * 25 + 400));
+  }, [data]);
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 text-slate-100 relative overflow-hidden p-6">
       <div className="max-w-7xl mx-auto flex flex-col gap-6">
@@ -293,7 +306,7 @@ export default function App() {
             A Sankey Chart Analysis of User Flows
           </p>
         </header>
-
+        
         {/* upload + filter */}
         <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-wrap gap-4 items-center">
           <label className="relative cursor-pointer group">
@@ -307,7 +320,6 @@ export default function App() {
               ✅ {rows.length.toLocaleString()} records loaded
             </div>
           )}
-
           <input
             type="text"
             placeholder="Filter by Client ID"
@@ -316,7 +328,7 @@ export default function App() {
             className="ml-auto px-4 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
           />
         </section>
-
+        
         {/* error */}
         {error && (
           <section className="bg-red-500/20 border border-red-500/30 rounded-xl p-4 backdrop-blur-sm">
@@ -326,7 +338,7 @@ export default function App() {
             </div>
           </section>
         )}
-
+        
         {/* summary stats */}
         {summary && (
           <section className="bg-white/10 rounded-xl p-6 border border-white/20 shadow-md flex flex-wrap gap-6 justify-center">
@@ -350,50 +362,58 @@ export default function App() {
             </div>
           </section>
         )}
-
+        
         {/* sankey chart */}
-        <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl min-h-[600px]">
+        <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl">
           {data ? (
-            <Plot
-              data={[data]}
-              layout={{
-                font: {
-                  size: 12,
-                  color: "#f8fafc",
-                  family: "Inter, system-ui, sans-serif",
-                },
-                paper_bgcolor: "#1e293b",
-                plot_bgcolor: "rgba(0,0,0,0)",
-                margin: { l: 20, r: 20, t: 80, b: 40 },
-                height: 900,
-                title: {
-                  text: "🔄 Client Journey Analytics Dashboard",
-                  font: { size: 24, color: "#f1f5f9", family: "Inter, system-ui, sans-serif" },
-                  x: 0.5,
-                  xanchor: "center",
-                  y: 0.95,
-                },
-                annotations: [
-                  {
-                    text: "Flow visualization showing customer progression through service touchpoints",
-                    x: 0.5,
-                    y: 0.02,
-                    xref: "paper",
-                    yref: "paper",
-                    xanchor: "center",
-                    yanchor: "bottom",
-                    showarrow: false,
-                    font: { size: 11, color: "#94a3b8" },
+            <div className="overflow-auto max-h-[900px] border border-white/10 rounded-lg bg-slate-800/50">
+              <Plot
+                data={[data]}
+                layout={{
+                  font: {
+                    size: 11,
+                    color: "#f8fafc",
+                    family: "Inter, system-ui, sans-serif",
                   },
-                ],
-                hovermode: "closest",
-                dragmode: "pan",
-                autosize: true,
-                showlegend: false,
-              }}
-              config={{ responsive: true, displayModeBar: true, displaylogo: false,modeBarButtonsToRemove: ["select2d", "lasso2d"] }}
-              style={{ width: "100%", height: "800px" }}
-            />
+                  paper_bgcolor: "rgba(30, 41, 59, 0.8)",
+                  plot_bgcolor: "rgba(0,0,0,0)",
+                  margin: { l: 120, r: 120, t: 80, b: 40 },
+                  width: 1600,
+                  height: chartHeight,
+                  title: {
+                    text: "🔄 Client Journey Analytics Dashboard",
+                    font: { size: 24, color: "#f1f5f9", family: "Inter, system-ui, sans-serif" },
+                    x: 0.5,
+                    xanchor: "center",
+                    y: 0.95,
+                  },
+                  annotations: [
+                    {
+                      text: "Flow visualization showing customer progression through service touchpoints",
+                      x: 0.5,
+                      y: 0.02,
+                      xref: "paper",
+                      yref: "paper",
+                      xanchor: "center",
+                      yanchor: "bottom",
+                      showarrow: false,
+                      font: { size: 11, color: "#94a3b8" },
+                    },
+                  ],
+                  hovermode: "closest",
+                  dragmode: "pan",
+                  showlegend: false,
+                }}
+                config={{ 
+                  responsive: false, 
+                  displayModeBar: true, 
+                  displaylogo: false,
+                  modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d"],
+                  scrollZoom: true
+                }}
+                style={{ minWidth: "1600px", height: `${chartHeight}px` }}
+              />
+            </div>
           ) : (
             <div className="text-center py-12 text-slate-400">
               <div className="text-6xl mb-4">📊</div>
