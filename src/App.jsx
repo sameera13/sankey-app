@@ -39,20 +39,20 @@ const COLUMN_X = {
 
 // Professional color palette with better contrast and visual hierarchy
 const NODE_PALETTE = {
-  DEFAULT: "#475569",        // Slate-600
-  CLIENT: "#7c3aed",         // Violet-600 - Starting point
-  CreateSession: "#2563eb",  // Blue-600 - Initial engagement
-  ValidateAddress: "#0284c7", // Sky-600 - Validation phase
-  GetQualifiedProducts: "#0891b2", // Cyan-600 - Product discovery
-  CreateOrder: "#059669",    // Emerald-600 - Order creation
-  SaveOrderProducts: "#16a34a", // Green-600 - Product saving
-  EstimateFirstBill: "#65a30d", // Lime-600 - Billing estimate
-  GetDueDates: "#ca8a04",    // Yellow-600 - Due date retrieval
-  SetDueDates: "#ea580c",    // Orange-600 - Due date setting
-  CreditCheck: "#eab308",    // Teal-700 - Credit verification (updated)
-  "Dropped @ CreateOrder": "#FBCEB1", // Orange‑500 – highlight specific drop‑off
-  SubmitOrder: "#15803d",    // Green-700 - Success state
-  DROP: "#64748b",          // Slate-500 - Drop-off
+  DEFAULT:            "#cbd5e1",   // Slate‑300
+  CLIENT:             "#c084fc",   // Violet‑300
+  CreateSession: "#d6d3d1",   // ← Rose‑300: soft, modern, readable
+  ValidateAddress:    "#e4e4e7", 
+  GetQualifiedProducts:"#d6d3d1",  // Cyan‑300
+  CreateOrder:        "#a8a29e",   // Emerald‑300
+  SaveOrderProducts:  "#86efac",   // Green‑300
+  EstimateFirstBill:  "#bef264",   // Lime‑300
+  GetDueDates:        "#fde047",   // Yellow‑300
+  SetDueDates:        "#fdba74",   // Orange‑300
+  CreditCheck:        "#fcd34d",   // Amber‑300
+  "Dropped @ CreateOrder": "#faf0e6", // Peach‑200
+  SubmitOrder:        "#4ade80",   // Green‑400 (still a bit stronger to highlight success)
+  DROP:               "#d1d5db",   // Slate‑300
 };
 
 const rgba = (hex, a = 0.7) =>
@@ -311,10 +311,10 @@ export default function App() {
         {/* header */}
         <header className="text-center mb-2">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent mb-2">
-            Customer Journey Analytics
+            Path Visualization
           </h1>
           <p className="text-slate-600 text-lg">
-            Interactive Sankey Diagram Visualization of User Flow Patterns
+            Interactive Sankey Diagram of User Flow Patterns
           </p>
         </header>
 
@@ -381,7 +381,7 @@ export default function App() {
                   autosize: true,
                   height: chartHeight,
                   title: {
-                    text: "Customer Journey Flow Analysis",
+                    text: "Order Journey Flow Analysis",
                     font: { size: 18, color: "#475569" },
                     x: 0.5,
                     y: 0.98,
@@ -443,10 +443,12 @@ export default function App() {
             <span className="text-2xl font-extrabold">{metrics.completed.toLocaleString()}</span>
             <span className="text-sm font-medium tracking-wide">Completed Orders</span>
           </div>
-          <div className="flex flex-col items-center bg-red-600 text-white px-6 py-5 rounded-xl shadow-lg w-40">
-            <span className="text-2xl font-extrabold">{metrics.dropped.toLocaleString()}</span>
-            <span className="text-sm font-medium tracking-wide">Dropped Sessions</span>
-          </div>
+          {/* Dropped Sessions – dark stone theme */}
+<div className="flex flex-col items-center bg-gradient-to-tr from-stone-700 to-stone-800 text-white px-6 py-5 rounded-xl shadow-lg w-40">
+  <span className="text-2xl font-extrabold">{metrics.dropped.toLocaleString()}</span>
+  <span className="text-sm font-medium tracking-wide">Dropped Sessions</span>
+</div>
+
         </section>
 
         {/* Summary table */}
