@@ -39,20 +39,20 @@ const COLUMN_X = {
 
 // Professional color palette with better contrast and visual hierarchy
 const NODE_PALETTE = {
-  DEFAULT:            "#cbd5e1",   // Slate‑300
-  CLIENT:             "#c084fc",   // Violet‑300
-  CreateSession: "#d6d3d1",   // ← Rose‑300: soft, modern, readable
-  ValidateAddress:    "#e4e4e7", 
-  GetQualifiedProducts:"#d6d3d1",  // Cyan‑300
-  CreateOrder:        "#a8a29e",   // Emerald‑300
-  SaveOrderProducts:  "#86efac",   // Green‑300
-  EstimateFirstBill:  "#bef264",   // Lime‑300
-  GetDueDates:        "#fde047",   // Yellow‑300
-  SetDueDates:        "#fdba74",   // Orange‑300
-  CreditCheck:        "#fcd34d",   // Amber‑300
-  "Dropped @ CreateOrder": "#faf0e6", // Peach‑200
-  SubmitOrder:        "#4ade80",   // Green‑400 (still a bit stronger to highlight success)
-  DROP:               "#d1d5db",   // Slate‑300
+  DEFAULT:                 "#b8b5a1",   // stone‑400 (base neutral)
+  CLIENT:                  "#0ea5e9",   // rose‑800 (bold entry)
+  CreateSession:           "#0ea5e9",   // amber‑500 (warm start)
+  ValidateAddress:         "#0284c7",   // amber‑400 (golden validate)
+  GetQualifiedProducts:    "#2563eb",   // sunflower (bright discovery)
+  CreateOrder:             "#d97706",   // orange‑600 (distinct order)
+  SaveOrderProducts:       "#b45309",   // orange‑700 (rich save)
+  EstimateFirstBill:       "#fbcfe8",   // pink‑200 (soft estimate)
+  GetDueDates:             "#f9a8d4",   // pink‑300 (gentle dates)
+  SetDueDates:             "#ec4899",   // pink‑500 (vivid set)
+  CreditCheck:             "#65a30d",   // lime‑600 (fresh verify)
+  "Dropped @ CreateOrder": "#a8a29e",  // stone‑400 (subtle drop)
+  SubmitOrder:             "#22c55e",   // green‑500 (success)
+  DROP:                    "#a8a29e",   // stone‑400 (all drops)
 };
 
 const rgba = (hex, a = 0.7) =>
