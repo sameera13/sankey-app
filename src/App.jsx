@@ -1,7 +1,14 @@
+/**
+ * App.jsx  –  React + Plotly Sankey with node‑level percentages + KPI cards
+ *
+ * Drop this file into a Vite/CRA project, `npm i xlsx plotly.js react-plotly.js`,
+ * then `npm run dev` and upload your Excel file.
+ */
 import React, { useState, useEffect, useMemo } from "react";
 import Plot from "react-plotly.js";
 import * as XLSX from "xlsx";
 
+/* ─────────── constants ─────────── */
 const EVENT_ORDER = [
   "CreateSession",
   "ValidateAddress",
@@ -12,22 +19,22 @@ const EVENT_ORDER = [
   "GetDueDates",
   "SetDueDates",
   "CreditCheck",
-  "SubmitOrder", 
+  "SubmitOrder",
 ];
 
 const COLUMN_X = {
-  CLIENT: 0.05,
-  CreateSession: 0.15,
-  ValidateAddress: 0.25,
-  GetQualifiedProducts: 0.35,
-  CreateOrder: 0.45,
-  SaveOrderProducts: 0.55,
-  EstimateFirstBill: 0.65,
-  GetDueDates: 0.75,
-  SetDueDates: 0.82,
-  CreditCheck: 0.89,
-  SubmitOrder: 0.95,
-  DROP: 0.98,
+  CLIENT: 0.02,
+  CreateSession: 0.25,
+  ValidateAddress: 0.40,
+  GetQualifiedProducts: 0.60,
+  CreateOrder: 0.72,
+  SaveOrderProducts: 0.80,
+  EstimateFirstBill: 0.85,
+  GetDueDates: 0.90,
+  SetDueDates: 0.94,
+  CreditCheck: 0.97,
+  SubmitOrder: 0.995,
+  DROP: 1.0,
 };
 
 const NODE_PALETTE = {
@@ -46,39 +53,38 @@ const NODE_PALETTE = {
   DROP: "#ef4444",
 };
 
-function rgba(hex, a = 0.6) {
-  return `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(
+const rgba = (hex, a = 0.6) =>
+  `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(
     hex.slice(3, 5),
     16
   )},${parseInt(hex.slice(5, 7), 16)},${a})`;
-}
 
+/* ─────────── helpers ─────────── */
 function parseSessions(rows) {
   const sessions = new Map();
   rows.forEach((r) => {
-    const keysLower = Object.keys(r).reduce((acc, k) => {
-      acc[k.toLowerCase()] = k;
-      return acc;
-    }, {});
-    const client = r[keysLower["strclientid"]]?.toString().trim() || "";
-    const sid = r[keysLower["strsessionid"]]?.toString().trim() || "";
-    let evtRaw = r[keysLower["methodname"]]?.toString().trim() || "";
+    const keys = Object.fromEntries(
+      Object.keys(r).map((k) => [k.toLowerCase(), k])
+    );
+    const client = r[keys["strclientid"]]?.toString().trim() || "";
+    const sid = r[keys["strsessionid"]]?.toString().trim() || "";
+    let evtRaw = r[keys["methodname"]]?.toString().trim() || "";
     if (!client || !sid || !evtRaw) return;
     if (evtRaw.includes("SAVESMARTCART") && evtRaw.includes("SUCCESS")) return;
-    // Normalize event names
+
+    /* normalise */
     let evt = evtRaw.toLowerCase();
-    if (evt === "submitorder") evt = "SubmitOrder";
+    if (evt === "saveorderedproducts") evt = "SaveOrderProducts";
+    else if (evt === "submitorder") evt = "SubmitOrder";
     else if (evt === "setduedates" || evt === "setduedate") evt = "SetDueDates";
     else {
-      const match = EVENT_ORDER.find(
-        (e) => e.toLowerCase() === evt.toLowerCase()
+      const match = EVENT_ORDER.find((e) =>
+        evtRaw.toLowerCase().startsWith(e.toLowerCase())
       );
-      if (match) evt = match;
-      else evt = evtRaw;
+      evt = match || evtRaw;
     }
-    if (!sessions.has(sid)) {
-      sessions.set(sid, { client, events: [] });
-    }
+
+    if (!sessions.has(sid)) sessions.set(sid, { client, events: [] });
     sessions.get(sid).events.push(evt);
   });
   return sessions;
@@ -97,109 +103,115 @@ function sortAndCleanSessions(sessions) {
   });
 }
 
+/* ─────────── Sankey builder ─────────── */
 function buildSankeyData(sessions) {
   const labels = [],
     xs = [],
     ys = [],
     nodeColors = [];
-  
-  // Get all unique clients first to calculate proper spacing
-  const allClients = [...new Set([...sessions.values()].map(s => s.client))].sort();
-  
-  // helper to create / reuse a node index
+
+  const allClients = [...new Set([...sessions.values()].map((s) => s.client))].sort();
+
   const idxOf = (lbl, x) => {
     const i = labels.indexOf(lbl);
     if (i !== -1) return i;
     labels.push(lbl);
     xs.push(x);
-    
-    // For client nodes, distribute them evenly in vertical space
     if (allClients.includes(lbl)) {
-      const clientIndex = allClients.indexOf(lbl);
-      const spacing = 1.0 / Math.max(allClients.length + 1, 10);
-      ys.push(spacing * (clientIndex + 1));
-    } else {
-      ys.push(null); // Let Plotly auto-position non-client nodes
-    }
-    
+      const gap = 1 / (allClients.length + 1);
+      ys.push(gap * (allClients.indexOf(lbl) + 1));
+    } else ys.push(null);
     nodeColors.push(NODE_PALETTE[lbl] || NODE_PALETTE.DEFAULT);
     return labels.length - 1;
   };
-  
-  const linkCounts = new Map();
-  const outTotals = new Map();
-  
-  // accumulate link frequencies & totals
+
+  const linkCounts = new Map(),
+    outTotals = new Map(),
+    nodeEntryCounts = new Map();
+
   sessions.forEach(({ client, events }) => {
     const path = [client, ...events];
     for (let i = 0; i < path.length - 1; i++) {
-      const src = path[i];
-      const tgt = path[i + 1];
+      const src = path[i],
+        tgt = path[i + 1],
+        key = `${src}||${tgt}`;
       if (src === tgt) continue;
-      const key = `${src}||${tgt}`;
       linkCounts.set(key, (linkCounts.get(key) || 0) + 1);
       outTotals.set(src, (outTotals.get(src) || 0) + 1);
+      nodeEntryCounts.set(tgt, (nodeEntryCounts.get(tgt) || 0) + 1);
     }
     const last = path[path.length - 1];
     if (last !== "SubmitOrder") {
-      const drop = `Dropped @ ${last}`;
-      const key = `${last}||${drop}`;
+      const drop = `Dropped @ ${last}`,
+        key = `${last}||${drop}`;
       linkCounts.set(key, (linkCounts.get(key) || 0) + 1);
       outTotals.set(last, (outTotals.get(last) || 0) + 1);
+      nodeEntryCounts.set(drop, (nodeEntryCounts.get(drop) || 0) + 1);
     }
   });
-  
-  // ensure every source/target has a node index & x‑column
+
   [...linkCounts.keys()].forEach((k) => {
     const [s, t] = k.split("||");
     idxOf(s, COLUMN_X[s] ?? COLUMN_X.CLIENT);
-    const tx = t.startsWith("Dropped") ? COLUMN_X.DROP : COLUMN_X[t] ?? COLUMN_X.DROP;
-    idxOf(t, tx);
+    idxOf(t, t.startsWith("Dropped") ? COLUMN_X.DROP : COLUMN_X[t] ?? COLUMN_X.DROP);
   });
-  
-  // build Sankey arrays
-  const sArr = [],
-    tArr = [],
-    vArr = [],
-    cArr = [],
-    hoverArr = [];
-  
+
+  const totalSessions = sessions.size;
+  const nodeLabelsPct = labels.map((lbl) => {
+    if (allClients.includes(lbl)) return lbl;
+    if (EVENT_ORDER.includes(lbl) || lbl.startsWith("Dropped")) {
+      const pct = totalSessions
+        ? (((nodeEntryCounts.get(lbl) || 0) / totalSessions) * 100).toFixed(1)
+        : 0;
+      return `${lbl} (${pct}%)`;
+    }
+    return lbl;
+  });
+
+  const source = [],
+    target = [],
+    value = [],
+    color = [],
+    hover = [];
+
   linkCounts.forEach((cnt, k) => {
-    const [s, t] = k.split("||");
+    const [s, t] = k.split("||"),
+      si = labels.indexOf(s),
+      ti = labels.indexOf(t);
     const pct = ((cnt / outTotals.get(s)) * 100).toFixed(1);
-    const si = labels.indexOf(s);
-    const ti = labels.indexOf(t);
-    let linkColor;
-    if (t.startsWith("Dropped")) linkColor = rgba("#ef4444", 0.7);
-    else if (t === "SubmitOrder") linkColor = rgba("#059669", 0.8);
-    else linkColor = rgba(nodeColors[si], 0.6);
-    sArr.push(si);
-    tArr.push(ti);
-    vArr.push(cnt);
-    cArr.push(linkColor);
-    hoverArr.push(`${s} → ${t}<br>${cnt} sessions (${pct}%)`);
+    source.push(si);
+    target.push(ti);
+    value.push(cnt);
+    color.push(
+      t.startsWith("Dropped")
+        ? rgba("#ef4444", 0.7)
+        : t === "SubmitOrder"
+        ? rgba("#059669", 0.8)
+        : rgba(nodeColors[si], 0.6)
+    );
+    hover.push(`${s} → ${t}<br>${cnt} sessions (${pct}%)`);
   });
-  
+
   return {
     type: "sankey",
     orientation: "h",
     arrangement: "snap",
     node: {
-      label: labels,
+      label: nodeLabelsPct,
       x: xs,
-      y: ys, // vertical positioning for clients
-      pad: 15,
+      y: ys,
+      pad: 30,
       thickness: 20,
       color: nodeColors,
       line: { color: "rgba(255,255,255,0.2)", width: 2 },
       hovertemplate: "<b>%{label}</b><extra></extra>",
     },
     link: {
-      source: sArr,
-      target: tArr,
-      value: vArr,
-      customdata: hoverArr,
-      color: cArr,
+      source,
+      target,
+      value,
+      color,
+      customdata: hover,
       line: { color: "rgba(255,255,255,0.1)", width: 0.5 },
       hovertemplate: "%{customdata}<extra></extra>",
     },
@@ -208,19 +220,21 @@ function buildSankeyData(sessions) {
   };
 }
 
+/* ─────────── component ─────────── */
 export default function App() {
   const [rows, setRows] = useState([]);
   const [data, setData] = useState(null);
+  const [metrics, setMetrics] = useState({ total: 0, completed: 0, dropped: 0 });
   const [error, setError] = useState(null);
   const [clientFilter, setClientFilter] = useState("");
-  
+
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = ({ target }) => {
       try {
-        const wb = XLSX.read(evt.target.result, { type: "array" });
+        const wb = XLSX.read(target.result, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         setRows(XLSX.utils.sheet_to_json(sheet, { defval: "" }));
         setError(null);
@@ -231,87 +245,101 @@ export default function App() {
     };
     reader.readAsArrayBuffer(file);
   };
-  
+
+  /* rebuild Sankey & KPIs on data/filter change */
   useEffect(() => {
     if (!rows.length) {
       setData(null);
+      setMetrics({ total: 0, completed: 0, dropped: 0 });
       return;
     }
-    let filteredRows = rows;
-    if (clientFilter.trim()) {
-      const f = clientFilter.toLowerCase();
-      filteredRows = filteredRows.filter((r) => {
-        const keysLower = Object.keys(r).reduce((acc, k) => {
-          acc[k.toLowerCase()] = k;
-          return acc;
-        }, {});
-        const client = r[keysLower["strclientid"]] || "";
-        return client.toLowerCase().includes(f);
-      });
-    }
-    const sessions = parseSessions(filteredRows);
+    const filtered = clientFilter.trim()
+      ? rows.filter((r) =>
+          (r[Object.keys(r).find((k) => k.toLowerCase() === "strclientid")] || "")
+            .toString()
+            .toLowerCase()
+            .includes(clientFilter.toLowerCase())
+        )
+      : rows;
+
+    const sessions = parseSessions(filtered);
     sortAndCleanSessions(sessions);
+
+    /* ───── KPI counters ───── */
+    const totalSessions = sessions.size;
+    let completed = 0;
+    sessions.forEach(({ events }) => {
+      if (events.length && events[events.length - 1] === "SubmitOrder") completed++;
+    });
+    setMetrics({
+      total: totalSessions,
+      completed,
+      dropped: totalSessions - completed,
+    });
+
     setData(buildSankeyData(sessions));
   }, [rows, clientFilter]);
-  
-  const summary = useMemo(() => {
-    if (!data || !rows.length) return null;
-    let filteredRows = rows;
-    if (clientFilter.trim()) {
-      const f = clientFilter.toLowerCase();
-      filteredRows = filteredRows.filter((r) => {
-        const keysLower = Object.keys(r).reduce((acc, k) => {
-          acc[k.toLowerCase()] = k;
-          return acc;
-        }, {});
-        const client = r[keysLower["strclientid"]] || "";
-        return client.toLowerCase().includes(f);
-      });
-    }
-    const sessions = parseSessions(filteredRows);
-    sortAndCleanSessions(sessions);
-    const totalSessions = sessions.size;
-    let completedCount = 0;
-    sessions.forEach(({ events }) => {
-      if (events.includes("SubmitOrder")) completedCount++;
-    });
-    const droppedCount = totalSessions - completedCount;
-    return {
-      totalSessions,
-      completed: completedCount,
-      dropped: droppedCount,
-      pctCompleted: totalSessions ? ((completedCount / totalSessions) * 100).toFixed(1) : 0,
-      pctDropped: totalSessions ? ((droppedCount / totalSessions) * 100).toFixed(1) : 0,
-    };
-  }, [data, rows, clientFilter]);
-  
-  // Calculate dynamic height based on number of unique clients
+
   const chartHeight = useMemo(() => {
     if (!data) return 800;
-    const clientCount = data.node.label.filter(label => 
-      !EVENT_ORDER.includes(label) && !label.startsWith('Dropped')
+    const clientCount = data.node.label.filter(
+      (l) =>
+        !EVENT_ORDER.some((e) => l.startsWith(e)) && !l.startsWith("Dropped")
     ).length;
     return Math.max(800, Math.min(1200, clientCount * 25 + 400));
   }, [data]);
-  
+
+  /* ─────────── UI ─────────── */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 text-slate-100 relative overflow-hidden p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 text-slate-100 p-6">
       <div className="max-w-7xl mx-auto flex flex-col gap-6">
         {/* header */}
-        <header className="mb-6">
+        <header>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-            Client Journey Visualization
+            Path Visualization
           </h1>
           <p className="text-slate-400 mt-1">
             A Sankey Chart Analysis of User Flows
           </p>
         </header>
-        
-        {/* upload + filter */}
+
+        {/* KPI cards */}
+        {metrics.total > 0 && (
+          <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              title="Total Sessions"
+              value={metrics.total.toLocaleString()}
+              className="text-emerald-400"
+            />
+            <StatCard
+              title="Completed (SubmitOrder)"
+              value={`${metrics.completed.toLocaleString()} (${(
+                (metrics.completed / metrics.total) *
+                100
+              ).toFixed(1)}%)`}
+              className="text-lime-300"
+            />
+            <StatCard
+              title="Dropped"
+              value={`${metrics.dropped.toLocaleString()} (${(
+                (metrics.dropped / metrics.total) *
+                100
+              ).toFixed(1)}%)`}
+              className="text-red-400"
+            />
+          </section>
+        )}
+
+        {/* upload / filter */}
         <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl flex flex-wrap gap-4 items-center">
-          <label className="relative cursor-pointer group">
-            <input type="file" accept=".xls,.xlsx" onChange={handleUpload} className="sr-only" />
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg cursor-pointer">
+          <label className="relative cursor-pointer">
+            <input
+              type="file"
+              accept=".xls,.xlsx"
+              onChange={handleUpload}
+              className="sr-only"
+            />
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg">
               📁 Choose Excel File
             </div>
           </label>
@@ -328,45 +356,18 @@ export default function App() {
             className="ml-auto px-4 py-2 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
           />
         </section>
-        
+
         {/* error */}
         {error && (
-          <section className="bg-red-500/20 border border-red-500/30 rounded-xl p-4 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="text-red-400 text-xl">⚠️</div>
-              <p className="text-red-300 font-mono">{error}</p>
-            </div>
+          <section className="bg-red-500/20 border border-red-500/30 rounded-xl p-4">
+            <p className="text-red-300 font-mono">{error}</p>
           </section>
         )}
-        
-        {/* summary stats */}
-        {summary && (
-          <section className="bg-white/10 rounded-xl p-6 border border-white/20 shadow-md flex flex-wrap gap-6 justify-center">
-            <div className="text-center">
-              <div className="text-4xl font-bold text-emerald-400">
-                {summary.totalSessions.toLocaleString()}
-              </div>
-              <div>Total Sessions</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-green-400">
-                {summary.completed.toLocaleString()} ({summary.pctCompleted}%)
-              </div>
-              <div>Completed (SubmitOrder)</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-red-400">
-                {summary.dropped.toLocaleString()} ({summary.pctDropped}%)
-              </div>
-              <div>Dropped</div>
-            </div>
-          </section>
-        )}
-        
-        {/* sankey chart */}
+
+        {/* Sankey */}
         <section className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-2xl">
           {data ? (
-            <div className="overflow-auto max-h-[900px] border border-white/10 rounded-lg bg-slate-800/50">
+            <div className="overflow-hidden max-h-[900px] border border-white/10 rounded-lg bg-slate-800/50">
               <Plot
                 data={[data]}
                 layout={{
@@ -375,18 +376,13 @@ export default function App() {
                     color: "#f8fafc",
                     family: "Inter, system-ui, sans-serif",
                   },
-                  paper_bgcolor: "rgba(30, 41, 59, 0.8)",
+                  paper_bgcolor: "rgba(30,41,59,0.8)",
                   plot_bgcolor: "rgba(0,0,0,0)",
-                  margin: { l: 120, r: 120, t: 80, b: 40 },
-                  width: 1600,
+                  margin: { l: 20, r: 20, t: 40, b: 40 },
+                  width: undefined,
+                  autosize: true,
                   height: chartHeight,
-                  title: {
-                    text: "🔄 Client Journey Analytics Dashboard",
-                    font: { size: 24, color: "#f1f5f9", family: "Inter, system-ui, sans-serif" },
-                    x: 0.5,
-                    xanchor: "center",
-                    y: 0.95,
-                  },
+
                   annotations: [
                     {
                       text: "Flow visualization showing customer progression through service touchpoints",
@@ -402,27 +398,39 @@ export default function App() {
                   ],
                   hovermode: "closest",
                   dragmode: "pan",
-                  showlegend: false,
                 }}
-                config={{ 
-                  responsive: false, 
-                  displayModeBar: true, 
+                config={{
+                  responsive: false,
+                  displayModeBar: true,
                   displaylogo: false,
                   modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d"],
-                  scrollZoom: true
+                  scrollZoom: true,
                 }}
-                style={{ minWidth: "1600px", height: `${chartHeight}px` }}
+                style={{ width: "100%", height: `${chartHeight}px` }}
               />
             </div>
           ) : (
             <div className="text-center py-12 text-slate-400">
               <div className="text-6xl mb-4">📊</div>
               <p className="text-lg mb-2">Ready to analyze your data</p>
-              <p className="text-sm">Upload an Excel file to generate the interactive Sankey diagram</p>
+              <p className="text-sm">
+                Upload an Excel file to generate the interactive Sankey diagram
+              </p>
             </div>
           )}
         </section>
+        
       </div>
+    </div>
+  );
+}
+
+/* ───── simple KPI card ───── */
+function StatCard({ title, value, className = "" }) {
+  return (
+    <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-xl text-center">
+      <div className={`text-4xl font-extrabold ${className}`}>{value}</div>
+      <div className="text-slate-300 mt-1">{title}</div>
     </div>
   );
 }
