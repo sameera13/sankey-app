@@ -1,70 +1,86 @@
-# Getting Started with Create React App
+📊 Client Journey Visualization Dashboard
+This is a React-based web application designed to visualize client journeys through various service touchpoints using an interactive Sankey diagram. By uploading an Excel file containing session and event data, users can gain insights into customer flow, identify common paths, and pinpoint drop-off points.
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+✨ Features
+Excel File Upload: Easily upload .xls or .xlsx files containing session and event data.
 
-## Available Scripts
+Interactive Sankey Diagram: Visualizes the flow of sessions between different service events.
 
-In the project directory, you can run:
+Node Percentages: Displays the percentage of total sessions that reach each event node directly on the chart.
 
-### `npm start`
+Hover Details: Provides detailed information (session count, percentage) on hover for both nodes and links.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Client Filtering: Filter the data by specific client IDs to analyze individual client journeys.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Session Summary: Displays key metrics like total sessions, completed sessions, and dropped sessions with percentages.
 
-### `npm test`
+Responsive Design: Adapts to different screen sizes for optimal viewing.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Dynamic Chart Sizing: The chart's height adjusts based on the number of unique clients to minimize overlap.
 
-### `npm run build`
+🚀 Technologies Used
+React: A JavaScript library for building user interfaces.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Plotly.js (via react-plotly.js): For creating the interactive Sankey diagram.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+SheetJS (xlsx): For parsing and reading Excel files.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Tailwind CSS: A utility-first CSS framework for rapid styling.
 
-### `npm run eject`
+⚙️ Setup
+To run this project locally, follow these steps:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Clone the repository:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+git clone <repository-url>
+cd <repository-name>
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+(Replace <repository-url> and <repository-name> with your actual repository details if this is a new project.)
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Install dependencies:
 
-## Learn More
+npm install
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Start the development server:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+npm run dev
 
-### Code Splitting
+The application will typically open in your browser at http://localhost:5173 (or another port if 5173 is in use).
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+📝 Usage
+Upload an Excel File:
 
-### Analyzing the Bundle Size
+Click the "📁 Choose Excel File" button.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Select your .xls or .xlsx file.
 
-### Making a Progressive Web App
+The application expects the following columns in your Excel sheet (case-insensitive, but common variations are handled):
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+strClientId (or similar, for client ID)
 
-### Advanced Configuration
+strSessionId (or similar, for session ID)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+MethodName (or similar, for the event/method name)
 
-### Deployment
+View the Sankey Diagram:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Once the file is loaded, the interactive Sankey diagram will automatically generate, visualizing the flow of sessions.
 
-### `npm run build` fails to minify
+Nodes represent events (or clients/drop-offs), and links represent the flow of sessions between them.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Percentages on nodes indicate the proportion of total sessions that reached that specific event.
+
+Filter by Client ID:
+
+Use the "Filter by Client ID" input field to narrow down the visualization to sessions belonging to a specific client. The chart will update dynamically.
+
+Interpret the Chart:
+
+Node Labels: Show a shortened event name and the percentage of total sessions reaching that node.
+
+Hover Tooltips: Hover over any node or link to see more detailed information, including full event names, session counts, and exact percentages.
+
+Link Thickness: The thickness of the links represents the volume of sessions flowing between events.
+
+"Dropped @" Nodes: Red nodes labeled "DROP @ [Event]" indicate sessions that ended their journey at that particular event without completing the full flow to "SubmitOrder".
+
