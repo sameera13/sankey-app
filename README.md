@@ -32,18 +32,18 @@ To run this project locally, follow these steps:
 
 Clone the repository:
 
-git clone <repository-url>
-cd <repository-name>
+- git clone https://github.com/sameera13/sankey-app
+- cd repository-name
 
 (Replace <repository-url> and <repository-name> with your actual repository details if this is a new project.)
 
 Install dependencies:
 
-npm install
+- npm install
 
 Start the development server:
 
-npm run dev
+- npm run dev
 
 The application will typically open in your browser at http://localhost:5173 (or another port if 5173 is in use).
 
